@@ -250,17 +250,19 @@ mod tests {
     use ::token::{Token, TokenClient};
     use payroll_registry::PayrollRegistry;
     use proof_verifier::{ProofVerifier, VerificationKey};
+    use salary_commitment::SalaryCommitmentContract;
     use soroban_sdk::testutils::Address as _;
     use soroban_sdk::Env;
 
     fn setup_addresses(env: &Env) -> ContractAddresses {
         let registry_id = env.register_contract(None, PayrollRegistry);
+        let commitment_id = env.register_contract(None, SalaryCommitmentContract);
         let verifier_id = env.register_contract(None, ProofVerifier);
         let token_id = env.register_contract(None, Token);
 
         ContractAddresses {
             registry: registry_id,
-            commitment: Address::generate(env),
+            commitment: commitment_id,
             verifier: verifier_id,
             token: token_id,
         }
@@ -321,6 +323,7 @@ mod tests {
         let verifier_client = ProofVerifierClient::new(&env, &addresses.verifier);
         verifier_client.initialize_verifier(&mock_vk(&env));
 
+        let commitment_client = SalaryCommitmentContractClient::new(&env, &addresses.commitment);
         let registry_client = PayrollRegistryClient::new(&env, &addresses.registry);
         let token_client = TokenClient::new(&env, &addresses.token);
 
@@ -330,6 +333,7 @@ mod tests {
         let commitment = BytesN::from_array(&env, &[9u8; 32]);
 
         let company_id = registry_client.register_company(&admin, &treasury);
+        commitment_client.store_commitment(&employee, &commitment);
         registry_client.add_employee(&company_id, &employee, &commitment);
 
         token_client.mint(&treasury, &10_000);
@@ -367,6 +371,7 @@ mod tests {
         let verifier_client = ProofVerifierClient::new(&env, &addresses.verifier);
         verifier_client.initialize_verifier(&mock_vk(&env));
 
+        let commitment_client = SalaryCommitmentContractClient::new(&env, &addresses.commitment);
         let registry_client = PayrollRegistryClient::new(&env, &addresses.registry);
         let token_client = TokenClient::new(&env, &addresses.token);
 
@@ -376,6 +381,7 @@ mod tests {
         let commitment = BytesN::from_array(&env, &[7u8; 32]);
 
         let company_id = registry_client.register_company(&admin, &treasury);
+        commitment_client.store_commitment(&employee, &commitment);
         registry_client.add_employee(&company_id, &employee, &commitment);
         token_client.mint(&treasury, &10_000);
 
@@ -469,6 +475,7 @@ mod tests {
         let verifier_client = ProofVerifierClient::new(&env, &addresses.verifier);
         verifier_client.initialize_verifier(&mock_vk(&env));
 
+        let commitment_client = SalaryCommitmentContractClient::new(&env, &addresses.commitment);
         let registry_client = PayrollRegistryClient::new(&env, &addresses.registry);
         let token_client = TokenClient::new(&env, &addresses.token);
 
@@ -478,6 +485,7 @@ mod tests {
         let commitment = BytesN::from_array(&env, &[8u8; 32]);
 
         let company_id = registry_client.register_company(&admin, &treasury);
+        commitment_client.store_commitment(&employee, &commitment);
         registry_client.add_employee(&company_id, &employee, &commitment);
         token_client.mint(&treasury, &10_000);
 
