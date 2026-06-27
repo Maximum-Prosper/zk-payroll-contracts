@@ -1,5 +1,5 @@
 [package]
-name = "payment_executor"
+name = "pause_manager"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -10,15 +10,9 @@ doctest = false
 
 [dependencies]
 soroban-sdk = { workspace = true }
-soroban-token-sdk = { workspace = true }
-payroll_registry = { path = "../payroll_registry" }
-proof_verifier = { path = "../proof_verifier" }
-pause_manager = { path = "../pause_manager" }
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
-payroll_registry = { path = "../payroll_registry" }
-token = { path = "../token" }
 
 [features]
 testutils = ["soroban-sdk/testutils"]

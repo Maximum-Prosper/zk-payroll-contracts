@@ -1,5 +1,6 @@
 #![no_std]
 
+use pause_manager::PauseManagerClient;
 use payroll_registry::{CompanyInfo, PayrollRegistryClient};
 use proof_verifier::{Groth16Proof, ProofVerifierClient};
 use soroban_sdk::{
@@ -43,6 +44,8 @@ pub enum DataKey {
     Payment(Address, u32), // (employee, period)
     Nullifier(BytesN<32>), // Cryptographic nullifier tracking
     TotalPaid(u64),        // Total paid by company
+    ExecutorAdmin,         // Executor-level admin for pause management
+    PauseManager,          // Pause manager contract address
 }
 
 #[contract]
@@ -70,6 +73,30 @@ impl PaymentExecutor {
         env.storage().persistent().set(&key, &addresses);
     }
 
+    /// Set the executor-level admin (one-time, protected by auth).
+    pub fn set_executor_admin(env: Env, admin: Address) {
+        if env.storage().persistent().has(&DataKey::ExecutorAdmin) {
+            panic!("Executor admin already set");
+        }
+        admin.require_auth();
+        env.storage()
+            .persistent()
+            .set(&DataKey::ExecutorAdmin, &admin);
+    }
+
+    /// Set the pause manager contract address (only executor admin).
+    pub fn set_pause_manager(env: Env, pause_manager: Address) {
+        let admin: Address = env
+            .storage()
+            .persistent()
+            .get(&DataKey::ExecutorAdmin)
+            .expect("Executor admin not set");
+        admin.require_auth();
+        env.storage()
+            .persistent()
+            .set(&DataKey::PauseManager, &pause_manager);
+    }
+
     /// Execute a private payment with ZK proof
     ///
     /// The proof verifies:
@@ -93,6 +120,19 @@ impl PaymentExecutor {
             .persistent()
             .get(&DataKey::Addresses)
             .expect("Not initialized");
+
+        // Check if pause manager is configured and system is paused
+        if env.storage().persistent().has(&DataKey::PauseManager) {
+            let pm_addr: Address = env
+                .storage()
+                .persistent()
+                .get(&DataKey::PauseManager)
+                .unwrap();
+            let pm_client = PauseManagerClient::new(&env, &pm_addr);
+            if pm_client.is_paused() {
+                panic!("Payroll is paused");
+            }
+        }
 
         // Check cryptographically if the exact proof was submitted previously
         let nullifier_key = DataKey::Nullifier(nullifier.clone());
@@ -245,10 +285,11 @@ impl PaymentExecutor {
 mod tests {
     use super::*;
     use ::token::{Token, TokenClient};
+    use pause_manager::{PauseManager, PauseManagerClient};
     use payroll_registry::PayrollRegistry;
     use proof_verifier::{ProofVerifier, VerificationKey};
     use soroban_sdk::testutils::Address as _;
-    use soroban_sdk::Env;
+    use soroban_sdk::{Env, IntoVal};
 
     fn setup_addresses(env: &Env) -> ContractAddresses {
         let registry_id = env.register_contract(None, PayrollRegistry);
@@ -514,5 +555,212 @@ mod tests {
         assert_eq!(token_client.balance(&treasury), 7_500);
         assert_eq!(token_client.balance(&employee), 2_500);
         assert_eq!(client.get_total_paid(&company_id), 2_500);
+    }
+
+    // ── Pause tests ──────────────────────────────────────────────────────────
+
+    fn setup_executor_with_pause_manager(
+        env: &Env,
+    ) -> (PaymentExecutorClient<'_>, PauseManagerClient<'_>, u64, Address, Address, Address)
+    {
+        env.mock_all_auths();
+
+        let contract_id = env.register_contract(None, PaymentExecutor);
+        let client = PaymentExecutorClient::new(env, &contract_id);
+
+        let addresses = setup_addresses(env);
+        client.initialize(&addresses);
+
+        let verifier_client = ProofVerifierClient::new(env, &addresses.verifier);
+        verifier_client.initialize_verifier(&mock_vk(env));
+
+        let registry_client = PayrollRegistryClient::new(env, &addresses.registry);
+        let token_client = TokenClient::new(env, &addresses.token);
+
+        let admin = Address::generate(env);
+        let treasury = Address::generate(env);
+        let employee = Address::generate(env);
+        let commitment = BytesN::from_array(env, &[9u8; 32]);
+
+        let company_id = registry_client.register_company(&admin, &treasury);
+        registry_client.add_employee(&company_id, &employee, &commitment);
+        token_client.mint(&treasury, &10_000);
+
+        // Set executor admin
+        client.set_executor_admin(&admin);
+
+        // Register and configure pause manager
+        let pm_id = env.register_contract(None, PauseManager);
+        let pm_client = PauseManagerClient::new(env, &pm_id);
+        let operator = Address::generate(env);
+        pm_client.initialize(&operator);
+
+        client.set_pause_manager(&pm_id);
+
+        (client, pm_client, company_id, admin, treasury, employee)
+    }
+
+    #[test]
+    fn test_paused_executor_rejects_payment() {
+        let env = Env::default();
+        let (client, pm_client, company_id, _admin, _treasury, employee) =
+            setup_executor_with_pause_manager(&env);
+
+        let proof_a = BytesN::from_array(&env, &[1u8; 64]);
+        let proof_b = BytesN::from_array(&env, &[2u8; 128]);
+        let proof_c = BytesN::from_array(&env, &[3u8; 64]);
+        let nullifier = BytesN::from_array(&env, &[4u8; 32]);
+
+        pm_client.pause();
+
+        let result = client.try_execute_payment(
+            &company_id,
+            &employee,
+            &1000,
+            &proof_a,
+            &proof_b,
+            &proof_c,
+            &nullifier,
+            &1,
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_unpaused_executor_resumes_payment() {
+        let env = Env::default();
+        let (client, pm_client, company_id, _admin, _treasury, employee) =
+            setup_executor_with_pause_manager(&env);
+
+        let proof_a = BytesN::from_array(&env, &[1u8; 64]);
+        let proof_b = BytesN::from_array(&env, &[2u8; 128]);
+        let proof_c = BytesN::from_array(&env, &[3u8; 64]);
+        let nullifier = BytesN::from_array(&env, &[4u8; 32]);
+
+        pm_client.pause();
+
+        // Verify paused
+        let result = client.try_execute_payment(
+            &company_id,
+            &employee,
+            &1000,
+            &proof_a.clone(),
+            &proof_b.clone(),
+            &proof_c.clone(),
+            &nullifier.clone(),
+            &1,
+        );
+        assert!(result.is_err());
+
+        // Unpause
+        pm_client.unpause();
+
+        // Should succeed now
+        client.execute_payment(
+            &company_id,
+            &employee,
+            &1000,
+            &proof_a,
+            &proof_b,
+            &proof_c,
+            &nullifier,
+            &1,
+        );
+
+        assert!(client.is_paid(&employee, &1));
+    }
+
+    #[test]
+    fn test_executor_works_without_pause_manager() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, PaymentExecutor);
+        let client = PaymentExecutorClient::new(&env, &contract_id);
+
+        let addresses = setup_addresses(&env);
+        client.initialize(&addresses);
+
+        let verifier_client = ProofVerifierClient::new(&env, &addresses.verifier);
+        verifier_client.initialize_verifier(&mock_vk(&env));
+
+        let registry_client = PayrollRegistryClient::new(&env, &addresses.registry);
+        let token_client = TokenClient::new(&env, &addresses.token);
+
+        let admin = Address::generate(&env);
+        let treasury = Address::generate(&env);
+        let employee = Address::generate(&env);
+        let commitment = BytesN::from_array(&env, &[9u8; 32]);
+
+        let company_id = registry_client.register_company(&admin, &treasury);
+        registry_client.add_employee(&company_id, &employee, &commitment);
+        token_client.mint(&treasury, &10_000);
+
+        let proof_a = BytesN::from_array(&env, &[1u8; 64]);
+        let proof_b = BytesN::from_array(&env, &[2u8; 128]);
+        let proof_c = BytesN::from_array(&env, &[3u8; 64]);
+        let nullifier = BytesN::from_array(&env, &[4u8; 32]);
+
+        client.execute_payment(
+            &company_id,
+            &employee,
+            &1000,
+            &proof_a,
+            &proof_b,
+            &proof_c,
+            &nullifier,
+            &1,
+        );
+
+        assert_eq!(token_client.balance(&treasury), 9_000);
+        assert_eq!(token_client.balance(&employee), 1_000);
+    }
+
+    #[test]
+    #[should_panic(expected = "authorized")]
+    fn test_set_pause_manager_rejects_unauthorized() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, PaymentExecutor);
+        let client = PaymentExecutorClient::new(&env, &contract_id);
+
+        let addresses = setup_addresses(&env);
+        let admin = Address::generate(&env);
+
+        // Only mock auth for admin during initialize
+        env.mock_auths(&[soroban_sdk::testutils::MockAuth {
+            address: &admin,
+            invoke: &soroban_sdk::testutils::MockAuthInvoke {
+                contract: &contract_id,
+                fn_name: "initialize",
+                args: (addresses.clone(),).into_val(&env),
+                sub_invokes: &[],
+            },
+        }]);
+        client.initialize(&addresses);
+
+        // Set executor admin as the legitimate admin
+        env.mock_auths(&[soroban_sdk::testutils::MockAuth {
+            address: &admin,
+            invoke: &soroban_sdk::testutils::MockAuthInvoke {
+                contract: &contract_id,
+                fn_name: "set_executor_admin",
+                args: (admin.clone(),).into_val(&env),
+                sub_invokes: &[],
+            },
+        }]);
+        client.set_executor_admin(&admin);
+
+        // Attacker tries to set pause manager
+        let pm_id = env.register_contract(None, PauseManager);
+        let attacker = Address::generate(&env);
+        env.mock_auths(&[soroban_sdk::testutils::MockAuth {
+            address: &attacker,
+            invoke: &soroban_sdk::testutils::MockAuthInvoke {
+                contract: &contract_id,
+                fn_name: "set_pause_manager",
+                args: (pm_id.clone(),).into_val(&env),
+                sub_invokes: &[],
+            },
+        }]);
+        client.set_pause_manager(&pm_id);
     }
 }
