@@ -52,7 +52,7 @@ fn setup_system<'a>(
     };
 
     executor.initialize(&addresses);
-    verifier.initialize(&Address::generate(env));
+    verifier.init_verifier_admin(&Address::generate(env));
     verifier.initialize_verifier(&mock_vk(env));
 
     let admin = Address::generate(env);

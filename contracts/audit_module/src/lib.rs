@@ -303,7 +303,10 @@ impl AuditModule {
         };
 
         env.events().publish(
-            (Symbol::new(&env, "AggregateAuditGenerated"), auditor.clone()),
+            (
+                Symbol::new(&env, "AggregateAuditGenerated"),
+                auditor.clone(),
+            ),
             (
                 report.company_id.clone(),
                 report.period_start,
@@ -356,11 +359,7 @@ impl AuditModule {
     /// employee address (used when the auditor IS the employee verifying
     /// their own commitment), or entries recorded under the company that
     /// references this employee.
-    pub fn query_by_employee(
-        env: Env,
-        company_id: Symbol,
-        employee: Address,
-    ) -> AuditQueryResult {
+    pub fn query_by_employee(env: Env, company_id: Symbol, employee: Address) -> AuditQueryResult {
         let all = Self::query_by_company(env.clone(), company_id);
         let mut filtered = Vec::new(&env);
 
@@ -407,12 +406,7 @@ impl AuditModule {
 
     /// Store a single audit log entry keyed by (company_id, counter) and
     /// increment the counter. Called after every verification / report.
-    fn record_audit_log(
-        env: &Env,
-        auditor: &Address,
-        scope: AuditScope,
-        matched: bool,
-    ) {
+    fn record_audit_log(env: &Env, auditor: &Address, scope: AuditScope, matched: bool) {
         let company_id = Symbol::new(env, "default");
         let counter: u32 = env
             .storage()

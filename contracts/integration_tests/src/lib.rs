@@ -96,12 +96,12 @@ mod e2e {
 
         let verifier_id = env.register_contract(None, ProofVerifier);
         let verifier_client = ProofVerifierClient::new(&env, &verifier_id);
-        verifier_client.initialize(&admin);
+        verifier_client.init_verifier_admin(&admin);
         verifier_client.initialize_verifier(&mock_vk(&env));
 
         let commitment_id = env.register_contract(None, SalaryCommitmentContract);
         let commitment_client_init = SalaryCommitmentContractClient::new(&env, &commitment_id);
-        commitment_client_init.initialize(&admin);
+        commitment_client_init.init_commitment_admin(&admin);
 
         let token_id = env.register_contract(None, Token);
 

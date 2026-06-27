@@ -32,14 +32,14 @@ pub struct ProofVerifier;
 
 #[contractimpl]
 impl ProofVerifier {
-    pub fn initialize(env: Env, admin: soroban_sdk::Address) {
+    pub fn init_verifier_admin(env: Env, admin: soroban_sdk::Address) {
         if env.storage().persistent().has(&DataKey::Admin) {
             panic!("Already initialized");
         }
         env.storage().persistent().set(&DataKey::Admin, &admin);
     }
 
-    pub fn get_admin(env: Env) -> soroban_sdk::Address {
+    pub fn get_verifier_admin(env: Env) -> soroban_sdk::Address {
         env.storage()
             .persistent()
             .get(&DataKey::Admin)

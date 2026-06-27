@@ -126,11 +126,7 @@ impl PaymentExecutor {
 
         // Assign sequential period ID
         let seq_key = DataKey::PeriodSequence(company_id);
-        let next_id: u32 = env
-            .storage()
-            .persistent()
-            .get(&seq_key)
-            .unwrap_or(1u32);
+        let next_id: u32 = env.storage().persistent().get(&seq_key).unwrap_or(1u32);
 
         let period_key = DataKey::Period(company_id, next_id);
         if env.storage().persistent().has(&period_key) {
@@ -148,15 +144,10 @@ impl PaymentExecutor {
         };
 
         env.storage().persistent().set(&period_key, &period);
-        env.storage()
-            .persistent()
-            .set(&seq_key, &(next_id + 1));
+        env.storage().persistent().set(&seq_key, &(next_id + 1));
 
         env.events().publish(
-            (
-                soroban_sdk::Symbol::new(&env, "PeriodCreated"),
-                company_id,
-            ),
+            (soroban_sdk::Symbol::new(&env, "PeriodCreated"), company_id),
             (next_id,),
         );
 
@@ -195,10 +186,7 @@ impl PaymentExecutor {
         env.storage().persistent().set(&period_key, &period);
 
         env.events().publish(
-            (
-                soroban_sdk::Symbol::new(&env, "PeriodClosed"),
-                company_id,
-            ),
+            (soroban_sdk::Symbol::new(&env, "PeriodClosed"), company_id),
             (period_id,),
         );
 
@@ -406,7 +394,7 @@ mod tests {
 
         let verifier_client = ProofVerifierClient::new(env, &verifier_id);
         let verifier_admin = Address::generate(env);
-        verifier_client.initialize(&verifier_admin);
+        verifier_client.init_verifier_admin(&verifier_admin);
         verifier_client.initialize_verifier(&mock_vk(env));
 
         ContractAddresses {

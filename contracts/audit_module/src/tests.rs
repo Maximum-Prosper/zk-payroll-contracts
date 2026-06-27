@@ -160,7 +160,7 @@ fn test_verify_commitment_with_key_matches() {
         &stored,
         &999_i128,
         &blinding,
-        &AuditScope::EmployeeList
+        &AuditScope::EmployeeList,
     );
     assert!(result.is_err());
 }

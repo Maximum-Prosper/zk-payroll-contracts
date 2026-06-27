@@ -30,8 +30,8 @@ fn test_initialize_stores_admin() {
     let client = ProofVerifierClient::new(&env, &contract_id);
     let admin = soroban_sdk::Address::generate(&env);
 
-    client.initialize(&admin);
-    assert_eq!(client.get_admin(), admin);
+    client.init_verifier_admin(&admin);
+    assert_eq!(client.get_verifier_admin(), admin);
 }
 
 #[test]
@@ -42,7 +42,7 @@ fn test_initialize_verifier_stores_vk() {
     let client = ProofVerifierClient::new(&env, &contract_id);
 
     let admin = soroban_sdk::Address::generate(&env);
-    client.initialize(&admin);
+    client.init_verifier_admin(&admin);
 
     let vk = mock_verification_key(&env);
     client.initialize_verifier(&vk);
@@ -64,7 +64,7 @@ fn test_initialize_verifier_twice_panics() {
     let client = ProofVerifierClient::new(&env, &contract_id);
 
     let admin = soroban_sdk::Address::generate(&env);
-    client.initialize(&admin);
+    client.init_verifier_admin(&admin);
 
     let vk = mock_verification_key(&env);
     client.initialize_verifier(&vk);
@@ -89,7 +89,7 @@ fn test_verify_payment_proof_interface() {
     let client = ProofVerifierClient::new(&env, &contract_id);
 
     let admin = soroban_sdk::Address::generate(&env);
-    client.initialize(&admin);
+    client.init_verifier_admin(&admin);
 
     let vk = mock_verification_key(&env);
     client.initialize_verifier(&vk);
@@ -115,7 +115,7 @@ fn test_verify_payment_proof_rejects_wrong_input_length() {
     let client = ProofVerifierClient::new(&env, &contract_id);
 
     let admin = soroban_sdk::Address::generate(&env);
-    client.initialize(&admin);
+    client.init_verifier_admin(&admin);
 
     let vk = mock_verification_key(&env);
     client.initialize_verifier(&vk);
@@ -135,7 +135,7 @@ fn test_unauthorized_initialize_verifier_fails() {
     let client = ProofVerifierClient::new(&env, &contract_id);
 
     let admin = soroban_sdk::Address::generate(&env);
-    client.initialize(&admin);
+    client.init_verifier_admin(&admin);
 
     let vk = mock_verification_key(&env);
     client.initialize_verifier(&vk);

@@ -69,7 +69,7 @@ impl SalaryCommitmentContract {
     /// Initialize the contract with an HR admin address.
     /// Must be called once. The admin is the only address allowed to
     /// store / update / revoke commitments.
-    pub fn initialize(env: Env, admin: Address) {
+    pub fn init_commitment_admin(env: Env, admin: Address) {
         if env.storage().persistent().has(&DataKey::Admin) {
             panic!("Already initialized");
         }
@@ -86,7 +86,7 @@ impl SalaryCommitmentContract {
     }
 
     /// Get the stored admin address.
-    pub fn get_admin(env: Env) -> Address {
+    pub fn get_commitment_admin(env: Env) -> Address {
         env.storage()
             .persistent()
             .get(&DataKey::Admin)
@@ -95,9 +95,7 @@ impl SalaryCommitmentContract {
 
     /// Get the payroll operator address (if set).
     pub fn get_payroll_operator(env: Env) -> Option<Address> {
-        env.storage()
-            .persistent()
-            .get(&DataKey::PayrollOperator)
+        env.storage().persistent().get(&DataKey::PayrollOperator)
     }
 
     /// Store a new salary commitment for an employee.
@@ -211,7 +209,11 @@ impl SalaryCommitmentContract {
     /// Check whether a commitment is currently active (not revoked).
     pub fn is_commitment_active(env: Env, employee: Address) -> bool {
         let key = DataKey::Commitment(employee);
-        if let Some(c) = env.storage().persistent().get::<DataKey, SalaryCommitment>(&key) {
+        if let Some(c) = env
+            .storage()
+            .persistent()
+            .get::<DataKey, SalaryCommitment>(&key)
+        {
             return !c.revoked;
         }
         false
@@ -321,10 +323,7 @@ impl SalaryCommitmentContract {
             .get(&DataKey::Admin)
             .expect("Not initialized");
 
-        let operator: Option<Address> = env
-            .storage()
-            .persistent()
-            .get(&DataKey::PayrollOperator);
+        let operator: Option<Address> = env.storage().persistent().get(&DataKey::PayrollOperator);
 
         match operator {
             Some(op) => op.require_auth(),
@@ -336,12 +335,7 @@ impl SalaryCommitmentContract {
     // Internal helpers
     // -----------------------------------------------------------------------
 
-    fn archive_commitment(
-        env: &Env,
-        employee: &Address,
-        commitment: &BytesN<32>,
-        version: u32,
-    ) {
+    fn archive_commitment(env: &Env, employee: &Address, commitment: &BytesN<32>, version: u32) {
         let mut idx: u32 = 0;
         loop {
             let history_key = DataKey::CommitmentHistory(employee.clone(), idx);
@@ -371,7 +365,7 @@ mod tests {
         let contract_id = env.register_contract(None, SalaryCommitmentContract);
         let client = SalaryCommitmentContractClient::new(&env, &contract_id);
         let admin = Address::generate(&env);
-        client.initialize(&admin);
+        client.init_commitment_admin(&admin);
         (env, contract_id, admin)
     }
 
@@ -511,7 +505,7 @@ mod tests {
         let client = SalaryCommitmentContractClient::new(&env, &contract_id);
 
         let admin = Address::generate(&env);
-        client.initialize(&admin);
+        client.init_commitment_admin(&admin);
 
         // No mock_auths — store_commitment should require admin auth and panic
         let employee = Address::generate(&env);
